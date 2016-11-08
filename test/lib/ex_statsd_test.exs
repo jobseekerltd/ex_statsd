@@ -4,7 +4,7 @@ defmodule ExStatsDTest do
   describe "with non-default options" do
     test "override name through options" do
       name = :dog_data
-      options = [name: name]
+      options = [name: name, worker_num: 1]
 
       {:ok, pid} = ExStatsD.start_link(options)
 
@@ -48,12 +48,12 @@ defmodule ExStatsDTest do
     end
 
     test "transmits data through correct server" do
-      options = [name: :the_name]
+      options = [worker_num: 1]
       {:ok, _pid} = ExStatsD.start_link(options)
 
-      values = 1..100 |> ExStatsD.count("items", options)
+      1..100 |> ExStatsD.count("items", options)
 
-      assert sent(:the_name) == ["test.items:100|c"]
+      assert sent(:"Elixir.ExStatsD_1") == ["test.items:100|c"]
     end
   end
 
@@ -163,10 +163,10 @@ defmodule ExStatsDTest do
     end
   end
 
-  defp state(name \\ ExStatsD) do
+  defp state(name \\ :"Elixir.ExStatsD_1") do
     :sys.get_state(name)
   end
 
-  defp sent(name \\ExStatsD), do: state(name).sink
+  defp sent(name \\ :"Elixir.ExStatsD_1"), do: state(name).sink
 
 end

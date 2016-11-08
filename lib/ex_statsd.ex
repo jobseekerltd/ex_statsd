@@ -1,4 +1,6 @@
 defmodule ExStatsD do
+  alias ExStatsD.Configuration
+
   @moduledoc """
   Settings are taken from the `ex_statsd` application configuration.
 
@@ -13,10 +15,6 @@ defmodule ExStatsD do
 
   use GenServer
 
-  @default_port 8125
-  @default_host "127.0.0.1"
-  @default_namespace nil
-  @default_sink nil
   @timing_stub 1.234
 
   # CLIENT
@@ -38,18 +36,31 @@ defmodule ExStatsD do
   ]
   @spec start_link(options) :: {:ok, pid}
   def start_link(options \\ []) do
-    state = %{port:      Keyword.get(options, :port, default_config(:port, @default_port)),
-              host:      Keyword.get(options, :host, default_config(:host, @default_host)) |> parse_host,
-              namespace: Keyword.get(options, :namespace, default_config(:namespace, @default_namespace)),
-              sink:      Keyword.get(options, :sink, default_config(:sink, @default_sink)),
-              socket:    nil}
-    GenServer.start_link(__MODULE__, state, Keyword.merge([name: __MODULE__], options))
+    state = %{port:       Keyword.get(options, :port, Configuration.get(:port)),
+              host:       Keyword.get(options, :host, Configuration.get(:host)) |> parse_host,
+              namespace:  Keyword.get(options, :namespace, Configuration.get(:namespace)),
+              sink:       Keyword.get(options, :sink, Configuration.get(:sink)),
+              worker_num: Keyword.get(options, :worker_num, 1),
+              socket:     nil}
+    GenServer.start_link(__MODULE__, state, Keyword.merge([name: worker_name(state.worker_num)], options))
   end
+
+  @doc """
+  The name of the worker, given it's number
+  """
+  def worker_name(number), do: "#{__MODULE__}_#{number}" |> String.to_atom
+
+  @doc """
+  The name of one of the workers, generated randomly to ensure fair distribution of work.
+  """
+  def random_worker, do: "#{__MODULE__}_#{worker_index}" |> String.to_atom
+
+  defp worker_index, do: rem(System.unique_integer([:positive]), Configuration.get(:worker_count)) + 1
 
   @doc """
   Stop the server.
   """
-  def stop(name \\__MODULE__) do
+  def stop(name) do
     GenServer.call(name, :stop)
   end
 
@@ -57,7 +68,7 @@ defmodule ExStatsD do
   Ensure the metrics are sent.
   """
   @spec flush :: :ok
-  def flush(name \\__MODULE__) do
+  def flush(name \\ random_worker) do
     GenServer.call(name, :flush)
   end
 
@@ -258,11 +269,8 @@ defmodule ExStatsD do
     end
   end
 
-  defp default_config(key, fallback) do
-    Application.get_env(:ex_statsd, key, fallback)
-  end
 
-  defp default_options, do: [sample_rate: 1, tags: [], name: __MODULE__]
+  defp default_options, do: [sample_rate: 1, tags: []]
 
   defp sampling(options, fun) when is_list(options) do
     case Keyword.get(options, :sample_rate, 1) do
@@ -279,8 +287,7 @@ defmodule ExStatsD do
 
   defp transmit(message, options), do: transmit(message, options, 1)
   defp transmit(message, options, sample_rate) do
-    name = Keyword.get(options, :name, __MODULE__)
-    GenServer.cast(name, {:transmit, message, options, sample_rate})
+    GenServer.cast(random_worker, {:transmit, message, options, sample_rate})
   end
 
   defp packet({key, value, type}, namespace, tags, sample_rate) do

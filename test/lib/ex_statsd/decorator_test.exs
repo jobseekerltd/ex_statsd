@@ -46,7 +46,7 @@ defmodule ExStatsD.DecoratorTest do
   end
 
   setup do
-    {:ok, pid} = ExStatsD.start_link
+    {:ok, pid} = ExStatsD.start_link([worker_num: 1])
     # Lets cheat for sampling here. Setting the seed like this should set the
     # 3 next calls to :random.uniform as 0.01, 0.89 and 0.11
     :random.seed(0, 0, 0)
@@ -131,6 +131,6 @@ defmodule ExStatsD.DecoratorTest do
     assert sent == expected
   end
 
-  defp sent, do: :sys.get_state(ExStatsD).sink
+  defp sent, do: :sys.get_state(:"Elixir.ExStatsD_1").sink
 
 end
